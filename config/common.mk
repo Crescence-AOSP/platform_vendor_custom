@@ -35,3 +35,6 @@ ifeq ($(BUILD_COLUMBUS),true)
 PRODUCT_PACKAGES += \
     ColumbusService
 endif
+
+# Versioning
+include vendor/custom/config/version.mk
