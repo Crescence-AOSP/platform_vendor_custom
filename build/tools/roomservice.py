@@ -52,8 +52,16 @@ repositories = []
 
 if not depsonly:
     api_url = f"https://api.github.com/search/repositories?q={device}+in:name+org:Crescence-Devices"
+    github_token = os.getenv('GITHUB_TOKEN')
+    if github_token:
+        print("Using GitHub token for authenticated requests.")
+        github_request = urllib.request.Request(api_url, headers={
+            "Authorization": "Bearer %s" % github_token
+        })
+    else:
+        github_request = api_url
     try:
-        with urllib.request.urlopen(api_url, timeout=10) as response:
+        with urllib.request.urlopen(github_request, timeout=10) as response:
             repos_json = json.loads(response.read().decode())
     except urllib.error.URLError:
         print("Failed to fetch data from GitHub API")
@@ -62,7 +70,7 @@ if not depsonly:
         print("Failed to parse return data from GitHub API")
         sys.exit(1)
     # Extract repository names
-    for repo in repos_json.get('items', []):
+    for repo in repos_json['items']:
         repositories.append(repo['name'])
 
 local_manifests = r'.repo/local_manifests'
