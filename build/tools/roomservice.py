@@ -56,8 +56,14 @@ repositories = []
 
 if not depsonly:
     api_url = f"https://api.github.com/search/repositories?q={device}+in:name+org:Crescence-Devices"
+    github_token = os.getenv('GITHUB_TOKEN')
+    headers = {'User-Agent': 'Crescence-Roomservice'}
+    if github_token:
+        print('Using GitHub token for authenticated requests.')
+        headers['Authorization'] = f'Bearer {github_token}'
+    github_request = urllib.request.Request(api_url, headers=headers)
     try:
-        with urllib.request.urlopen(api_url, timeout=10) as response:
+        with urllib.request.urlopen(github_request, timeout=10) as response:
             repos_json = json.loads(response.read().decode())
     except urllib.error.URLError:
         print("Failed to fetch data from GitHub API")
