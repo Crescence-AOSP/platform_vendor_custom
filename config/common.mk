@@ -1,3 +1,10 @@
+# Apps
+PRODUCT_PACKAGES += \
+    AccessibilityMenu \
+    Multiuser \
+    QuickAccessWallet \
+    SafetyRegulatoryInfo
+
 # Audio
 include vendor/custom/config/audio.mk
 
