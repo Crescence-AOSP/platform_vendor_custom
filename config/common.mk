@@ -9,3 +9,6 @@ include vendor/custom/config/charger.mk
 
 # Fonts
 include vendor/custom/config/fonts.mk
+
+# GMS
+include vendor/gms/config.mk
