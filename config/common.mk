@@ -1,3 +1,6 @@
+# Audio
+include vendor/custom/config/audio.mk
+
 # Bootanimation
 include vendor/custom/config/bootanimation.mk
 
