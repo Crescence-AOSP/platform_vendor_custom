@@ -45,27 +45,25 @@ except IndexError:
 
 if not depsonly:
     print(
-        f'Device {device} not found. Attempting to retrieve device repository from LineageOS Github (http://github.com/LineageOS).'
+        f'Device {device} not found. Attempting to retrieve device repository from Crescence-Devices Github (http://github.com/Crescence-Devices).'
     )
 
 repositories = []
 
 if not depsonly:
-    githubreq = urllib.request.Request(
-        'https://raw.githubusercontent.com/LineageOS/mirror/main/default.xml'
-    )
+    api_url = "https://api.github.com/orgs/Crescence-Devices/repos?per_page=100"
     try:
-        result = ElementTree.fromstring(
-            urllib.request.urlopen(githubreq, timeout=10).read().decode()
-        )
+        with urllib.request.urlopen(api_url, timeout=10) as response:
+            repos_json = json.loads(response.read().decode())
     except urllib.error.URLError:
-        print('Failed to fetch data from GitHub')
+        print("Failed to fetch data from GitHub API")
         sys.exit(1)
     except ValueError:
-        print('Failed to parse return data from GitHub')
+        print("Failed to parse return data from GitHub API")
         sys.exit(1)
-    for res in result.findall('.//project'):
-        repositories.append(res.attrib['name'][10:])
+    # Extract repository names
+    for repo in repos_json:
+        repositories.append(repo['name'])
 
 local_manifests = r'.repo/local_manifests'
 if not os.path.exists(local_manifests):
@@ -118,9 +116,12 @@ def get_from_manifest_project_paths(manifest_path):
 
 def get_default_revision():
     m = ElementTree.parse(get_manifest_path())
-    d = m.findall('default')[0]
-    r = d.get('revision')
-    return r.replace('refs/heads/', '').replace('refs/tags/', '')
+    for remote in m.findall('remote'):
+        if remote.get('name') == 'github':
+            r = remote.get('revision')
+            if r:
+                return r.replace('refs/heads/', '').replace('refs/tags/', '')
+    return None
 
 
 def get_from_manifest(devicename):
@@ -132,7 +133,7 @@ def get_from_manifest(devicename):
             lm = ElementTree.Element('manifest')
 
         for localpath in lm.findall('project'):
-            if re.search(f'android_device_.*_{device}$', localpath.get('name')):
+            if re.search(f'device_.*_{device}$', localpath.get('name')):
                 return localpath.get('path')
 
     return None
@@ -209,6 +210,7 @@ def add_to_manifest(dependencies):
             repo_name = dependency['repository']
             repo_target = dependency['target_path']
             repo_revision = dependency['branch']
+            repo_remote = dependency.get('remote', 'github')
             print(f'Checking if {repo_target} is fetched from {repo_name}')
             if is_in_manifest('project', 'path', repo_target):
                 print(f'LineageOS/{repo_name} already fetched to {repo_target}')
@@ -218,9 +220,10 @@ def add_to_manifest(dependencies):
                 'project',
                 attrib={
                     'path': repo_target,
-                    'remote': 'github',
-                    'name': f'LineageOS/{repo_name}',
+                    'remote': repo_remote,
+                    'name': "%s" % repo_name,
                     'revision': repo_revision,
+                    'clone-depth': "1",
                 },
             )
             if repo_remote := dependency.get('remote', None):
@@ -252,7 +255,7 @@ def add_to_manifest(dependencies):
 
 def fetch_dependencies(repo_path):
     print(f'Looking for dependencies in {repo_path}')
-    dependencies_path = repo_path + '/lineage.dependencies'
+    dependencies_path = repo_path + '/custom.dependencies'
     syncable_repos = []
     verify_repos = []
 
@@ -280,16 +283,7 @@ def fetch_dependencies(repo_path):
                     fetch_list.append(dependency)
                     syncable_repos.append(dependency['target_path'])
                     if 'branch' not in dependency:
-                        if dependency.get('remote', 'github') == 'github':
-                            dependency['branch'] = (
-                                get_default_or_fallback_revision(
-                                    dependency['repository']
-                                )
-                            )
-                            if not dependency['branch']:
-                                sys.exit(1)
-                        else:
-                            dependency['branch'] = None
+                        dependency['branch'] = get_default_revision()
                 verify_repos.append(dependency['target_path'])
 
                 if not os.path.isdir(dependency['target_path']):
@@ -312,51 +306,6 @@ def fetch_dependencies(repo_path):
     for deprepo in verify_repos:
         fetch_dependencies(deprepo)
 
-
-def get_default_or_fallback_revision(repo_name):
-    default_revision = get_default_revision()
-    print(f'Default revision: {default_revision}')
-    print('Checking branch info')
-
-    try:
-        stdout = subprocess.run(
-            [
-                'git',
-                'ls-remote',
-                '-h',
-                'https://:@github.com/LineageOS/' + repo_name,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        ).stdout.decode()
-        branches = [x.split('refs/heads/')[-1] for x in stdout.splitlines()]
-    except Exception:
-        return ''
-
-    if default_revision in branches:
-        return default_revision
-
-    if os.getenv('ROOMSERVICE_BRANCHES'):
-        fallbacks = list(
-            filter(bool, os.getenv('ROOMSERVICE_BRANCHES').split(' '))
-        )
-        for fallback in fallbacks:
-            if fallback in branches:
-                print(f'Using fallback branch: {fallback}')
-                return fallback
-
-    print(
-        f'Default revision {default_revision} not found in {repo_name}. Bailing.'
-    )
-    print('Branches found:')
-    for branch in branches:
-        print(branch)
-    print(
-        'Use the ROOMSERVICE_BRANCHES environment variable to specify a list of fallback branches.'
-    )
-    return ''
-
-
 if depsonly:
     repo_path = get_from_manifest(device)
     if repo_path:
@@ -368,14 +317,14 @@ if depsonly:
 
 else:
     for repo_name in repositories:
-        if re.match(r'^android_device_[^_]*_' + device + '$', repo_name):
+        if re.match(r'^device_[^_]*_' + device + '$', repo_name):
             print(f'Found repository: {repo_name}')
 
-            manufacturer = repo_name.replace('android_device_', '').replace(
+            manufacturer = repo_name.replace('device_', '').replace(
                 '_' + device, ''
             )
             repo_path = f'device/{manufacturer}/{device}'
-            revision = get_default_or_fallback_revision(repo_name)
+            revision = get_default_revision()
             if revision == '':
                 # Some devices have the same codename but shipped a long time ago and may not have
                 # a current branch set up.
@@ -384,7 +333,7 @@ else:
                 continue
 
             device_repository = {
-                'repository': repo_name,
+                'repository': 'Crescence-Devices/' + repo_name,
                 'target_path': repo_path,
                 'branch': revision,
             }
@@ -399,5 +348,5 @@ else:
             sys.exit()
 
 print(
-    f'Repository for {device} not found in the LineageOS Github repository list. If this is in error, you may need to manually add it to your local_manifests/roomservice.xml.'
+    f'Repository for {device} not found in the Crescence-Devices GitHub repository list. If this is in error, you may need to manually add it to your local_manifests/roomservice.xml.'
 )
