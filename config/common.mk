@@ -28,7 +28,10 @@ endif
 include vendor/custom/config/fonts.mk
 
 # GMS
+WITH_GMS ?= true
+ifeq ($(WITH_GMS),true)
 include vendor/gms/config.mk
+endif
 
 # Quick Tap
 ifeq ($(BUILD_COLUMBUS),true)
